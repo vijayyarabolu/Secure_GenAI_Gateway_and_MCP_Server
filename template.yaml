@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Secure GenAI Gateway
+  
+  A serverless gateway that sanitizes inputs and routes requests to Amazon Bedrock.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+    Runtime: python3.9
+    Architectures:
+      - x86_64
+
+Resources:
+  # 1. The API Gateway (The Front Door)
+  GenAIApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'POST, OPTIONS'"
+        AllowHeaders: "'Content-Type, X-Api-Key'"
+        AllowOrigin: "'*'"
+
+  # 2. The Lambda Function (The Brain)
+  GenAIFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: lambda_function.lambda_handler
+      Policies:
+        # Give permission to call Bedrock
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: "*"
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref GenAIApi
+            Path: /generate
+            Method: post
+
+  # 3. CloudWatch Log Group (The Memory)
+  GenAILogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${GenAIFunction}"
+      RetentionInDays: 7
+
+Outputs:
+  GenAIApiEndpoint:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${GenAIApi}.execute-api.${AWS::Region}.amazonaws.com/prod/generate"
